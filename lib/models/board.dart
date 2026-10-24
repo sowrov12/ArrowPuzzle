@@ -62,4 +62,7 @@ class Board {
       .expand((row) => row)
       .where((tile) => tile != null && tile.isOccupied)
       .length;
+
+  /// True when every arrow has been removed (win condition).
+  bool get isCleared => tileCount == 0;
 }
