@@ -8,14 +8,21 @@ import 'package:flutter/painting.dart' show FontWeight, TextStyle;
 
 import '../components/board_component.dart';
 import '../components/hearts_component.dart';
+import '../components/hint_button_component.dart';
 import '../levels/sample_level.dart';
 import '../logic/lives.dart';
 import '../logic/path_checker.dart';
 import '../models/board.dart';
 
 class ArrowGame extends FlameGame {
-  ArrowGame({Board? board, this.onTapResult, this.onWin, this.onGameOver})
-      : _board = board ?? Board.fromLayout(sampleLevelLayout);
+  ArrowGame({
+    Board? board,
+    this.hintsPerLevel = 3,
+    this.onTapResult,
+    this.onWin,
+    this.onGameOver,
+  })  : hintsLeft = hintsPerLevel,
+        _board = board ?? Board.fromLayout(sampleLevelLayout);
 
   /// Hearts per level (product spec).
   static const int maxHearts = 3;
@@ -23,7 +30,13 @@ class ArrowGame extends FlameGame {
   final Board _board;
   final Lives lives = Lives(maxHearts: maxHearts);
 
+  /// Hints available per level. Placeholder value: extra hints become
+  /// purchasable / ad-rewarded in Task 4.2.
+  final int hintsPerLevel;
+  int hintsLeft;
+
   BoardComponent? _boardComponent;
+  HintButtonComponent? _hintButton;
   HeartsComponent? _heartsComponent;
   TextComponent? _banner;
 
@@ -61,8 +74,35 @@ class ArrowGame extends FlameGame {
     _boardComponent = board;
     await add(board);
 
+    final hintButton = HintButtonComponent(
+      onPressed: requestHint,
+      hintsLeft: hintsLeft,
+    );
+    _hintButton = hintButton;
+    await add(hintButton);
+
     hearts.layout(size);
+    hintButton.layout(size, HeartsComponent.hudHeight);
     board.layout(size, topInset: HeartsComponent.hudHeight);
+  }
+
+  /// Highlights a playable arrow. Returns true if a hint is being shown.
+  /// A new hint is only spent when none is currently visible.
+  bool requestHint() {
+    final board = _boardComponent;
+    if (board == null || hasWon || hasLost) return false;
+
+    if (board.hasActiveHint) {
+      board.showHint(); // restart the pulse, no extra cost
+      return true;
+    }
+    if (hintsLeft <= 0) return false;
+    if (board.showHint() == null) return false; // nothing free: don't charge
+
+    hintsLeft--;
+    _hintButton?.hintsLeft = hintsLeft;
+    debugPrint('Hint used. Hints left: $hintsLeft');
+    return true;
   }
 
   void _handleCollision() {
@@ -111,6 +151,7 @@ class ArrowGame extends FlameGame {
   void onGameResize(Vector2 size) {
     super.onGameResize(size);
     _heartsComponent?.layout(size);
+    _hintButton?.layout(size, HeartsComponent.hudHeight);
     _boardComponent?.layout(size, topInset: HeartsComponent.hudHeight);
     _banner?.position = size / 2;
   }
