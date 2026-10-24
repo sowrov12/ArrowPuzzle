@@ -2,9 +2,7 @@ import 'dart:ui' show Color;
 
 import 'package:flame/components.dart';
 import 'package:flame/game.dart';
-import 'package:flame/text.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/painting.dart' show FontWeight, TextStyle;
 
 import '../components/board_component.dart';
 import '../components/hearts_component.dart';
@@ -27,6 +25,11 @@ class ArrowGame extends FlameGame {
   /// Hearts per level (product spec).
   static const int maxHearts = 3;
 
+  /// Overlay names, registered by the GameScreen's overlayBuilderMap.
+  static const String pauseOverlay = 'pause';
+  static const String winOverlay = 'win';
+  static const String loseOverlay = 'lose';
+
   final Board _board;
   final Lives lives = Lives(maxHearts: maxHearts);
 
@@ -38,7 +41,6 @@ class ArrowGame extends FlameGame {
   BoardComponent? _boardComponent;
   HintButtonComponent? _hintButton;
   HeartsComponent? _heartsComponent;
-  TextComponent? _banner;
 
   /// Optional hook for later tasks.
   final void Function(int row, int col, PathResult result)? onTapResult;
@@ -51,6 +53,8 @@ class ArrowGame extends FlameGame {
 
   bool hasWon = false;
   bool hasLost = false;
+
+  bool get isFinished => hasWon || hasLost;
 
   @override
   Color backgroundColor() => const Color(0xFF1B1F2A);
@@ -90,7 +94,7 @@ class ArrowGame extends FlameGame {
   /// A new hint is only spent when none is currently visible.
   bool requestHint() {
     final board = _boardComponent;
-    if (board == null || hasWon || hasLost) return false;
+    if (board == null || isFinished) return false;
 
     if (board.hasActiveHint) {
       board.showHint(); // restart the pulse, no extra cost
@@ -105,8 +109,19 @@ class ArrowGame extends FlameGame {
     return true;
   }
 
+  void pauseGame() {
+    if (isFinished || overlays.isActive(pauseOverlay)) return;
+    pauseEngine();
+    overlays.add(pauseOverlay);
+  }
+
+  void resumeGame() {
+    overlays.remove(pauseOverlay);
+    resumeEngine();
+  }
+
   void _handleCollision() {
-    if (hasWon || hasLost) return;
+    if (isFinished) return;
     lives.loseHeart();
     _heartsComponent?.hearts = lives.hearts;
     debugPrint('Hearts left: ${lives.hearts}');
@@ -117,7 +132,7 @@ class ArrowGame extends FlameGame {
     hasLost = true;
     _boardComponent?.inputLocked = true;
     debugPrint('Game over - no hearts left.');
-    _showBanner('GAME OVER'); // placeholder; real Lose overlay is Task 2.3
+    overlays.add(loseOverlay);
     onGameOver?.call();
   }
 
@@ -125,26 +140,8 @@ class ArrowGame extends FlameGame {
     if (hasLost) return; // an arrow that was already leaving can't undo a loss
     hasWon = true;
     debugPrint('Board cleared - level complete!');
-    _showBanner('LEVEL CLEAR!'); // placeholder; real Win overlay is Task 2.3
+    overlays.add(winOverlay);
     onWin?.call();
-  }
-
-  void _showBanner(String message) {
-    final banner = TextComponent(
-      text: message,
-      anchor: Anchor.center,
-      position: size / 2,
-      priority: 100,
-      textRenderer: TextPaint(
-        style: const TextStyle(
-          color: Color(0xFFFFFFFF),
-          fontSize: 40,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
-    _banner = banner;
-    add(banner);
   }
 
   @override
@@ -153,6 +150,5 @@ class ArrowGame extends FlameGame {
     _heartsComponent?.layout(size);
     _hintButton?.layout(size, HeartsComponent.hudHeight);
     _boardComponent?.layout(size, topInset: HeartsComponent.hudHeight);
-    _banner?.position = size / 2;
   }
 }
