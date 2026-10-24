@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:flame/components.dart';
 
+import '../logic/hint_finder.dart';
 import '../logic/path_checker.dart';
 import '../models/board.dart';
 import 'arrow_component.dart';
@@ -51,6 +52,23 @@ class BoardComponent extends PositionComponent {
   bool inputLocked = false;
 
   static final Paint _cellPaint = Paint()..color = const Color(0xFF262B3A);
+
+  /// True while a hint highlight is visible.
+  bool get hasActiveHint => _arrows.any((a) => a.isHinted);
+
+  /// Highlights a safe-to-tap arrow. Returns it, or null if none is free.
+  ArrowComponent? showHint() {
+    final target = HintFinder.find(board);
+    if (target == null) return null;
+    for (final arrow in _arrows) {
+      arrow.clearHint();
+    }
+    final match = _arrows.firstWhere(
+      (a) => a.row == target.row && a.col == target.col,
+    );
+    match.showHint();
+    return match;
+  }
 
   void _handleTap(ArrowComponent arrow) {
     if (inputLocked || _isCleared || arrow.isRemoving) return;

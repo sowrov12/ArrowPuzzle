@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flame/components.dart';
@@ -33,6 +34,10 @@ class ArrowComponent extends PositionComponent with TapCallbacks {
   Color _flashColor = const Color(0x00000000);
   double _flashTimer = 0;
 
+  static const double hintDuration = 4;
+  double _hintTimer = 0;
+  double _hintElapsed = 0;
+
   static final Paint _arrowPaint = Paint()..color = const Color(0xFFFFFFFF);
 
   /// Brief colored overlay, used for blocked taps.
@@ -41,10 +46,21 @@ class ArrowComponent extends PositionComponent with TapCallbacks {
     _flashTimer = _flashDuration;
   }
 
+  bool get isHinted => _hintTimer > 0;
+
+  /// Pulsing highlight telling the player this arrow can be tapped safely.
+  void showHint() {
+    _hintTimer = hintDuration;
+    _hintElapsed = 0;
+  }
+
+  void clearHint() => _hintTimer = 0;
+
   /// Slides the arrow by [delta] (in board coordinates), then removes it from
   /// the tree and calls [onDone].
   void slideOff(Vector2 delta, {required void Function() onDone}) {
     isRemoving = true;
+    clearHint();
     priority = 10; // draw above neighbours while leaving
     add(
       MoveEffect.by(
@@ -60,6 +76,7 @@ class ArrowComponent extends PositionComponent with TapCallbacks {
 
   @override
   void onTapDown(TapDownEvent event) {
+    clearHint();
     onTap?.call(this);
   }
 
@@ -67,7 +84,13 @@ class ArrowComponent extends PositionComponent with TapCallbacks {
   void update(double dt) {
     super.update(dt);
     if (_flashTimer > 0) {
-      _flashTimer = (_flashTimer - dt).clamp(0, _flashDuration);
+      _flashTimer -= dt;
+      if (_flashTimer < 0) _flashTimer = 0;
+    }
+    if (_hintTimer > 0) {
+      _hintTimer -= dt;
+      _hintElapsed += dt;
+      if (_hintTimer < 0) _hintTimer = 0;
     }
   }
 
@@ -94,6 +117,21 @@ class ArrowComponent extends PositionComponent with TapCallbacks {
     if (_flashTimer > 0) {
       final alpha = (160 * (_flashTimer / _flashDuration)).round();
       canvas.drawRRect(bg, Paint()..color = _flashColor.withAlpha(alpha));
+    }
+
+    if (_hintTimer > 0) {
+      final pulse = 0.5 + 0.5 * math.sin(_hintElapsed * 8);
+      final ring = RRect.fromRectAndRadius(
+        Rect.fromLTWH(0, 0, s, size.y).deflate(s * 0.04),
+        Radius.circular(s * 0.16),
+      );
+      canvas.drawRRect(
+        ring,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = s * 0.09
+          ..color = Color(0xFFFFE066).withAlpha((120 + 135 * pulse).round()),
+      );
     }
   }
 
