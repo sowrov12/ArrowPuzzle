@@ -1,8 +1,24 @@
 import 'package:flutter/material.dart';
 
+import 'levels/level_data.dart';
+import 'logic/game_progress.dart';
 import 'screens/main_menu_screen.dart';
+import 'storage/hive_progress_storage.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  try {
+    final storage = await HiveProgressStorage.open();
+    gameProgress = await GameProgress.load(
+      totalLevels: Levels.all.length,
+      storage: storage,
+    );
+  } catch (e) {
+    // Storage problems must not block play; fall back to in-memory progress.
+    debugPrint('Local storage unavailable, progress will not be saved: $e');
+  }
+
   runApp(const ArrowPuzzleApp());
 }
 
