@@ -1,42 +1,141 @@
-name: Build Flutter Android APK
+name: Build Android APK
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main]
   pull_request:
-    branches: [ main, master ]
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Set up Java Development Kit (JDK)
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'zulu'
-        java-version: '17'
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
 
-    - name: Set up Flutter
-      uses: subosito/flutter-action@v2
-      with:
-        channel: 'stable'
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
 
-    - name: Install Dependencies
-      run: flutter pub get
+      # Safety net: generates android/ only if it is not committed yet.
+      - name: Ensure Android platform files exist
+        run: |
+          mkdir -p logs
+          if [ ! -d android ]; then
+            echo "android/ not found - generating it with flutter create"
+            flutter create . --platforms=android --project-name arrow_puzzle
+            rm -f test/widget_test.dart   # template test targets the counter app
+          fi
 
-    - name: Run Tests
-      run: flutter test
+      - name: Install dependencies
+        id: pubget
+        run: |
+          set -o pipefail
+          flutter pub get 2>&1 | tee logs/pub_get.log
 
-    - name: Build APK
-      run: flutter build apk --split-per-abi
+      - name: Analyze
+        id: analyze
+        run: |
+          set -o pipefail
+          flutter analyze --no-fatal-infos 2>&1 | tee logs/analyze.log
 
-    - name: Upload APK Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: release-apk
-        path: build/app/outputs/flutter-apk/*.apk
-        
+      - name: Run tests
+        id: test
+        run: |
+          set -o pipefail
+          flutter test 2>&1 | tee logs/test.log
+
+      - name: Build release APK
+        id: build
+        run: |
+          set -o pipefail
+          flutter build apk --release 2>&1 | tee logs/build.log
+
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arrow-puzzle-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+
+      # Runs only when a previous step failed. Prints a short, readable
+      # summary to the log, the run's Summary tab, and as error annotations.
+      - name: Error Summary
+        if: failure()
+        shell: bash
+        env:
+          OUTCOME_PUBGET: ${{ steps.pubget.outcome }}
+          OUTCOME_ANALYZE: ${{ steps.analyze.outcome }}
+          OUTCOME_TEST: ${{ steps.test.outcome }}
+          OUTCOME_BUILD: ${{ steps.build.outcome }}
+        run: |
+          PATTERN='error •|error:|Error:|^e: |\[E\]|FAILED|Some tests failed|Exception|What went wrong|Execution failed|Could not|Failed to|version solving failed'
+          SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}"
+          found=0
+
+          report() {  # $1=stage title  $2=log file  $3=hint
+            local title="$1" file="$2" hint="$3"
+            found=1
+            local matches
+            matches=$(grep -E "$PATTERN" "$file" 2>/dev/null | head -n 15 || true)
+            [ -z "$matches" ] && matches=$(tail -n 15 "$file" 2>/dev/null || echo "(no log output captured)")
+
+            echo ""
+            echo "=================================================="
+            echo " ERROR SUMMARY: $title FAILED"
+            echo "=================================================="
+            echo "$matches"
+            echo "--------------------------------------------------"
+            echo " Likely fix: $hint"
+            echo " Full log: artifact 'failure-logs' -> $file"
+            echo "=================================================="
+
+            {
+              echo "### ❌ $title failed"
+              echo '```'
+              echo "$matches"
+              echo '```'
+              echo "**Likely fix:** $hint"
+              echo ""
+            } >> "$SUMMARY"
+
+            local first
+            first=$(echo "$matches" | head -n 1 | tr -d '\r')
+            echo "::error title=$title failed::$first"
+          }
+
+          [ "$OUTCOME_PUBGET"  = "failure" ] && report "Install dependencies" logs/pub_get.log "Check pubspec.yaml versions and SDK constraints."
+          [ "$OUTCOME_ANALYZE" = "failure" ] && report "Analyze"              logs/analyze.log "Fix the compile/lint errors listed above (file:line shown)."
+          [ "$OUTCOME_TEST"    = "failure" ] && report "Tests"                logs/test.log    "Run 'flutter test' locally; see the failing test name and expected/actual values."
+          [ "$OUTCOME_BUILD"   = "failure" ] && report "Android build"        logs/build.log   "Check the Gradle 'What went wrong' lines; often Java/Gradle version or missing android/ files."
+
+          if [ "$found" -eq 0 ]; then
+            msg="A setup step failed before the build stages (checkout, Java, Flutter or platform generation). Open the failed step above."
+            echo "ERROR SUMMARY: $msg"
+            echo "### ❌ Workflow failed early" >> "$SUMMARY"
+            echo "$msg" >> "$SUMMARY"
+            echo "::error title=Workflow failed early::$msg"
+          fi
+
+      - name: Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-logs
+          path: logs/
+          if-no-files-found: ignore
