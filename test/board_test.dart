@@ -40,6 +40,16 @@ void main() {
       expect(() => Board.fromLayout(['>x']), throwsArgumentError);
     });
 
+    test('isCleared is true only when no occupied tiles remain', () {
+      final board = Board.fromLayout(['>.<']);
+      expect(board.isCleared, isFalse);
+      board.tileAt(0, 0)!.isOccupied = false;
+      expect(board.isCleared, isFalse);
+      board.tileAt(0, 2)!.isOccupied = false;
+      expect(board.isCleared, isTrue);
+      expect(board.tileCount, 0);
+    });
+
     test('sample level is a 5x5 board', () {
       final board = Board.fromLayout(sampleLevelLayout);
       expect(board.rows, 5);
