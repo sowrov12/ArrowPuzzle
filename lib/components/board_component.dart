@@ -47,10 +47,13 @@ class BoardComponent extends PositionComponent {
 
   bool get isCleared => _isCleared;
 
+  /// When true, taps are ignored (set by the game on game over).
+  bool inputLocked = false;
+
   static final Paint _cellPaint = Paint()..color = const Color(0xFF262B3A);
 
   void _handleTap(ArrowComponent arrow) {
-    if (_isCleared || arrow.isRemoving) return;
+    if (inputLocked || _isCleared || arrow.isRemoving) return;
 
     final result = PathChecker.check(board, arrow.row, arrow.col);
     if (result == PathResult.clearPath) {
@@ -81,9 +84,10 @@ class BoardComponent extends PositionComponent {
     await addAll(_arrows);
   }
 
-  void layout(Vector2 available) {
+  /// [topInset] reserves space at the top of the screen (e.g. for the hearts).
+  void layout(Vector2 available, {double topInset = 0}) {
     final usableW = available.x - screenPadding * 2;
-    final usableH = available.y - screenPadding * 2;
+    final usableH = available.y - topInset - screenPadding * 2;
     if (usableW <= 0 || usableH <= 0 || board.rows == 0 || board.cols == 0) {
       return;
     }
@@ -92,7 +96,7 @@ class BoardComponent extends PositionComponent {
     size = Vector2(cellSize * board.cols, cellSize * board.rows);
     position = Vector2(
       (available.x - size.x) / 2,
-      (available.y - size.y) / 2,
+      topInset + (available.y - topInset - size.y) / 2,
     );
     // Far enough to leave the screen from anywhere on the board.
     _exitDistance = math.max(available.x, available.y) + cellSize;
