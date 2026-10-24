@@ -7,51 +7,91 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart' show FontWeight, TextStyle;
 
 import '../components/board_component.dart';
+import '../components/hearts_component.dart';
 import '../levels/sample_level.dart';
+import '../logic/lives.dart';
 import '../logic/path_checker.dart';
 import '../models/board.dart';
 
 class ArrowGame extends FlameGame {
-  ArrowGame({Board? board, this.onTapResult, this.onWin})
+  ArrowGame({Board? board, this.onTapResult, this.onWin, this.onGameOver})
       : _board = board ?? Board.fromLayout(sampleLevelLayout);
 
-  final Board _board;
-  BoardComponent? _boardComponent;
-  TextComponent? _winText;
+  /// Hearts per level (product spec).
+  static const int maxHearts = 3;
 
-  /// Optional hook for later tasks (e.g. hearts in Task 2.1).
+  final Board _board;
+  final Lives lives = Lives(maxHearts: maxHearts);
+
+  BoardComponent? _boardComponent;
+  HeartsComponent? _heartsComponent;
+  TextComponent? _banner;
+
+  /// Optional hook for later tasks.
   final void Function(int row, int col, PathResult result)? onTapResult;
 
   /// Called once when the board is cleared (win condition).
   final void Function()? onWin;
 
+  /// Called once when the last heart is lost (lose condition).
+  final void Function()? onGameOver;
+
   bool hasWon = false;
+  bool hasLost = false;
 
   @override
   Color backgroundColor() => const Color(0xFF1B1F2A);
 
   @override
   Future<void> onLoad() async {
-    final component = BoardComponent(
+    final hearts = HeartsComponent(maxHearts: maxHearts, hearts: lives.hearts);
+    _heartsComponent = hearts;
+    await add(hearts);
+
+    final board = BoardComponent(
       _board,
       onArrowTapped: (arrow, result) {
         debugPrint('Tapped ${arrow.tile.id} (${arrow.tile.direction.toJson()})'
             ' -> ${result.name}');
+        if (result == PathResult.collisionDetected) _handleCollision();
         onTapResult?.call(arrow.row, arrow.col, result);
       },
       onBoardCleared: _handleWin,
     );
-    _boardComponent = component;
-    await add(component);
-    component.layout(size);
+    _boardComponent = board;
+    await add(board);
+
+    hearts.layout(size);
+    board.layout(size, topInset: HeartsComponent.hudHeight);
+  }
+
+  void _handleCollision() {
+    if (hasWon || hasLost) return;
+    lives.loseHeart();
+    _heartsComponent?.hearts = lives.hearts;
+    debugPrint('Hearts left: ${lives.hearts}');
+    if (lives.isEmpty) _handleGameOver();
+  }
+
+  void _handleGameOver() {
+    hasLost = true;
+    _boardComponent?.inputLocked = true;
+    debugPrint('Game over - no hearts left.');
+    _showBanner('GAME OVER'); // placeholder; real Lose overlay is Task 2.3
+    onGameOver?.call();
   }
 
   void _handleWin() {
+    if (hasLost) return; // an arrow that was already leaving can't undo a loss
     hasWon = true;
     debugPrint('Board cleared - level complete!');
-    // Placeholder banner; the real Win overlay is built in Task 2.3.
-    final text = TextComponent(
-      text: 'LEVEL CLEAR!',
+    _showBanner('LEVEL CLEAR!'); // placeholder; real Win overlay is Task 2.3
+    onWin?.call();
+  }
+
+  void _showBanner(String message) {
+    final banner = TextComponent(
+      text: message,
       anchor: Anchor.center,
       position: size / 2,
       priority: 100,
@@ -63,15 +103,15 @@ class ArrowGame extends FlameGame {
         ),
       ),
     );
-    _winText = text;
-    add(text);
-    onWin?.call();
+    _banner = banner;
+    add(banner);
   }
 
   @override
   void onGameResize(Vector2 size) {
     super.onGameResize(size);
-    _boardComponent?.layout(size);
-    _winText?.position = size / 2;
+    _heartsComponent?.layout(size);
+    _boardComponent?.layout(size, topInset: HeartsComponent.hudHeight);
+    _banner?.position = size / 2;
   }
 }
