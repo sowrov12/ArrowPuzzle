@@ -27,6 +27,7 @@ class LevelSelectScreen extends StatelessWidget {
               return _LevelTile(
                 level: level,
                 unlocked: gameProgress.isUnlocked(level.id),
+                best: gameProgress.highScoreFor(level.id),
               );
             },
           );
@@ -37,10 +38,15 @@ class LevelSelectScreen extends StatelessWidget {
 }
 
 class _LevelTile extends StatelessWidget {
-  const _LevelTile({required this.level, required this.unlocked});
+  const _LevelTile({
+    required this.level,
+    required this.unlocked,
+    required this.best,
+  });
 
   final LevelData level;
   final bool unlocked;
+  final int best;
 
   @override
   Widget build(BuildContext context) {
@@ -73,6 +79,14 @@ class _LevelTile extends StatelessWidget {
                       '${level.cols}×${level.rows}',
                       style: const TextStyle(color: Colors.white70),
                     ),
+                    if (best > 0)
+                      Text(
+                        '★ $best',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                        ),
+                      ),
                   ],
                 )
               : const Icon(Icons.lock, color: Colors.white38),

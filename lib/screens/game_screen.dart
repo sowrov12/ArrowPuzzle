@@ -20,6 +20,8 @@ class GameScreen extends StatefulWidget {
 class _GameScreenState extends State<GameScreen> {
   late LevelData _level;
   late ArrowGame _game;
+  int _lastScore = 0;
+  bool _newBest = false;
 
   @override
   void initState() {
@@ -30,9 +32,15 @@ class _GameScreenState extends State<GameScreen> {
 
   ArrowGame _createGame() {
     final levelId = _level.id;
+    _lastScore = 0;
+    _newBest = false;
     return ArrowGame(
       board: _level.createBoard(),
-      onWin: () => gameProgress.completeLevel(levelId),
+      onWin: (score) {
+        _lastScore = score;
+        _newBest = gameProgress.submitScore(levelId, score);
+        gameProgress.completeLevel(levelId);
+      },
     );
   }
 
@@ -76,10 +84,13 @@ class _GameScreenState extends State<GameScreen> {
                     ),
                 ArrowGame.winOverlay: (context, game) => GameOverlayCard(
                       title: 'Level Clear!',
-                      message: next == null
-                          ? 'You finished every available level!'
-                          : '${game.lives.hearts} of ${ArrowGame.maxHearts} '
-                              'hearts left',
+                      message: [
+                        'Score: $_lastScore  ·  '
+                            '${_newBest ? 'New best!' : 'Best: ${gameProgress.highScoreFor(_level.id)}'}',
+                        '${game.lives.hearts} of ${ArrowGame.maxHearts} '
+                            'hearts left',
+                        if (next == null) 'You finished every available level!',
+                      ].join('\n'),
                       actions: [
                         if (next != null)
                           OverlayButton(
