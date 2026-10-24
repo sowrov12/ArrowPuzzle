@@ -3,18 +3,24 @@ import 'dart:ui';
 
 import 'package:flame/components.dart';
 
+import '../logic/path_checker.dart';
 import '../models/board.dart';
 import 'arrow_component.dart';
+
+typedef ArrowTapCallback = void Function(
+    ArrowComponent arrow, PathResult result);
 
 /// Renders the grid and owns one [ArrowComponent] per tile.
 /// Call [layout] whenever the available screen size changes.
 class BoardComponent extends PositionComponent {
-  BoardComponent(this.board) {
+  BoardComponent(this.board, {this.onArrowTapped}) {
     for (var r = 0; r < board.rows; r++) {
       for (var c = 0; c < board.cols; c++) {
         final tile = board.tileAt(r, c);
         if (tile != null) {
-          _arrows.add(ArrowComponent(tile: tile, row: r, col: c));
+          _arrows.add(
+            ArrowComponent(tile: tile, row: r, col: c, onTap: _handleTap),
+          );
         }
       }
     }
@@ -23,20 +29,32 @@ class BoardComponent extends PositionComponent {
   static const double screenPadding = 16;
   static const double cellGap = 4;
 
-  final Board board;
-  final List<ArrowComponent> _arrows = [];
+  static const Color _clearFlash = Color(0xFF22C55E);
+  static const Color _collisionFlash = Color(0xFFFF2D2D);
 
+  final Board board;
+
+  /// Notified after every tap with the path-check result.
+  final ArrowTapCallback? onArrowTapped;
+
+  final List<ArrowComponent> _arrows = [];
   double cellSize = 0;
 
   static final Paint _cellPaint = Paint()..color = const Color(0xFF262B3A);
+
+  void _handleTap(ArrowComponent arrow) {
+    final result = PathChecker.check(board, arrow.row, arrow.col);
+    arrow.flash(
+      result == PathResult.clearPath ? _clearFlash : _collisionFlash,
+    );
+    onArrowTapped?.call(arrow, result);
+  }
 
   @override
   Future<void> onLoad() async {
     await addAll(_arrows);
   }
 
-  /// Fits the board inside [available] (the full game size), centered,
-  /// and positions every arrow.
   void layout(Vector2 available) {
     final usableW = available.x - screenPadding * 2;
     final usableH = available.y - screenPadding * 2;
