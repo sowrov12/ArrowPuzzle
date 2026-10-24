@@ -1,13 +1,15 @@
 import 'dart:ui';
 
 import 'package:flame/components.dart';
+import 'package:flame/effects.dart';
 import 'package:flame/events.dart';
+import 'package:flutter/animation.dart' show Curves;
 
 import '../models/direction.dart';
 import '../models/tile.dart';
 
-/// Draws one arrow tile and reports taps. The arrow is drawn pointing UP and
-/// rotated about its center according to the tile's direction.
+/// Draws one arrow tile, reports taps, and can slide itself off the board.
+/// The arrow is drawn pointing UP and rotated about its center.
 class ArrowComponent extends PositionComponent with TapCallbacks {
   ArrowComponent({
     required this.tile,
@@ -23,17 +25,37 @@ class ArrowComponent extends PositionComponent with TapCallbacks {
   /// Called when the player taps this arrow.
   final void Function(ArrowComponent arrow)? onTap;
 
+  /// True from the moment the removal animation starts.
+  bool isRemoving = false;
+
   static const double _flashDuration = 0.25;
+  static const double slideDuration = 0.4;
   Color _flashColor = const Color(0x00000000);
   double _flashTimer = 0;
 
   static final Paint _arrowPaint = Paint()..color = const Color(0xFFFFFFFF);
 
-  /// Brief colored overlay so taps are visible before Task 1.3 (removal
-  /// animation) and Task 2.1 (hearts) add real feedback.
+  /// Brief colored overlay, used for blocked taps.
   void flash(Color color) {
     _flashColor = color;
     _flashTimer = _flashDuration;
+  }
+
+  /// Slides the arrow by [delta] (in board coordinates), then removes it from
+  /// the tree and calls [onDone].
+  void slideOff(Vector2 delta, {required void Function() onDone}) {
+    isRemoving = true;
+    priority = 10; // draw above neighbours while leaving
+    add(
+      MoveEffect.by(
+        delta,
+        EffectController(duration: slideDuration, curve: Curves.easeIn),
+        onComplete: () {
+          removeFromParent();
+          onDone();
+        },
+      ),
+    );
   }
 
   @override

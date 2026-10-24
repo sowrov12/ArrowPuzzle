@@ -10,10 +10,11 @@ import 'arrow_component.dart';
 typedef ArrowTapCallback = void Function(
     ArrowComponent arrow, PathResult result);
 
-/// Renders the grid and owns one [ArrowComponent] per tile.
+/// Renders the grid, owns one [ArrowComponent] per tile, applies tap results
+/// (remove on clear path, flash on collision) and detects the win condition.
 /// Call [layout] whenever the available screen size changes.
 class BoardComponent extends PositionComponent {
-  BoardComponent(this.board, {this.onArrowTapped}) {
+  BoardComponent(this.board, {this.onArrowTapped, this.onBoardCleared}) {
     for (var r = 0; r < board.rows; r++) {
       for (var c = 0; c < board.cols; c++) {
         final tile = board.tileAt(r, c);
@@ -28,8 +29,6 @@ class BoardComponent extends PositionComponent {
 
   static const double screenPadding = 16;
   static const double cellGap = 4;
-
-  static const Color _clearFlash = Color(0xFF22C55E);
   static const Color _collisionFlash = Color(0xFFFF2D2D);
 
   final Board board;
@@ -37,17 +36,44 @@ class BoardComponent extends PositionComponent {
   /// Notified after every tap with the path-check result.
   final ArrowTapCallback? onArrowTapped;
 
+  /// Called once, after the last arrow has finished leaving the board.
+  final void Function()? onBoardCleared;
+
   final List<ArrowComponent> _arrows = [];
   double cellSize = 0;
+  double _exitDistance = 0;
+  int _removing = 0; // arrows currently animating off
+  bool _isCleared = false;
+
+  bool get isCleared => _isCleared;
 
   static final Paint _cellPaint = Paint()..color = const Color(0xFF262B3A);
 
   void _handleTap(ArrowComponent arrow) {
+    if (_isCleared || arrow.isRemoving) return;
+
     final result = PathChecker.check(board, arrow.row, arrow.col);
-    arrow.flash(
-      result == PathResult.clearPath ? _clearFlash : _collisionFlash,
-    );
+    if (result == PathResult.clearPath) {
+      // Free the cell right away so other arrows can use the space.
+      arrow.tile.isOccupied = false;
+      _removing++;
+      final dir = arrow.tile.direction;
+      arrow.slideOff(
+        Vector2(dir.dCol.toDouble(), dir.dRow.toDouble()) * _exitDistance,
+        onDone: _onArrowGone,
+      );
+    } else {
+      arrow.flash(_collisionFlash);
+    }
     onArrowTapped?.call(arrow, result);
+  }
+
+  void _onArrowGone() {
+    _removing--;
+    if (_removing == 0 && board.isCleared && !_isCleared) {
+      _isCleared = true;
+      onBoardCleared?.call();
+    }
   }
 
   @override
@@ -68,8 +94,11 @@ class BoardComponent extends PositionComponent {
       (available.x - size.x) / 2,
       (available.y - size.y) / 2,
     );
+    // Far enough to leave the screen from anywhere on the board.
+    _exitDistance = math.max(available.x, available.y) + cellSize;
 
     for (final arrow in _arrows) {
+      if (arrow.isRemoving) continue; // don't disturb running animations
       arrow.size = Vector2.all(cellSize - cellGap);
       arrow.position = Vector2(
         (arrow.col + 0.5) * cellSize,
