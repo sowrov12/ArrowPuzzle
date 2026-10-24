@@ -10,6 +10,7 @@ import '../components/hint_button_component.dart';
 import '../levels/sample_level.dart';
 import '../logic/lives.dart';
 import '../logic/path_checker.dart';
+import '../logic/score_calculator.dart';
 import '../models/board.dart';
 
 class ArrowGame extends FlameGame {
@@ -20,7 +21,9 @@ class ArrowGame extends FlameGame {
     this.onWin,
     this.onGameOver,
   })  : hintsLeft = hintsPerLevel,
-        _board = board ?? Board.fromLayout(sampleLevelLayout);
+        _board = board ?? Board.fromLayout(sampleLevelLayout) {
+    totalArrows = _board.tileCount;
+  }
 
   /// Hearts per level (product spec).
   static const int maxHearts = 3;
@@ -31,6 +34,9 @@ class ArrowGame extends FlameGame {
   static const String loseOverlay = 'lose';
 
   final Board _board;
+
+  /// Arrows on the board when the level started (used for scoring).
+  late final int totalArrows;
   final Lives lives = Lives(maxHearts: maxHearts);
 
   /// Hints available per level. Placeholder value: extra hints become
@@ -45,8 +51,8 @@ class ArrowGame extends FlameGame {
   /// Optional hook for later tasks.
   final void Function(int row, int col, PathResult result)? onTapResult;
 
-  /// Called once when the board is cleared (win condition).
-  final void Function()? onWin;
+  /// Called once when the board is cleared, with the final score.
+  final void Function(int score)? onWin;
 
   /// Called once when the last heart is lost (lose condition).
   final void Function()? onGameOver;
@@ -55,6 +61,15 @@ class ArrowGame extends FlameGame {
   bool hasLost = false;
 
   bool get isFinished => hasWon || hasLost;
+
+  int get hintsUsed => hintsPerLevel - hintsLeft;
+
+  /// Score if the level were finished right now.
+  int get score => ScoreCalculator.calculate(
+        arrowCount: totalArrows,
+        heartsLeft: lives.hearts,
+        hintsUsed: hintsUsed,
+      );
 
   @override
   Color backgroundColor() => const Color(0xFF1B1F2A);
@@ -140,8 +155,8 @@ class ArrowGame extends FlameGame {
     if (hasLost) return; // an arrow that was already leaving can't undo a loss
     hasWon = true;
     debugPrint('Board cleared - level complete!');
+    onWin?.call(score); // save progress before the overlay reads it
     overlays.add(winOverlay);
-    onWin?.call();
   }
 
   @override
