@@ -1,0 +1,24 @@
+name: Clean old build files
+
+# Run this by hand: Actions > "Clean old build files" > Run workflow.
+# It deletes ALL stored build artifacts (APK zips) of this repository to free the Actions storage.
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  clean:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete all artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ids=$(gh api --paginate "repos/${{ github.repository }}/actions/artifacts?per_page=100" --jq '.artifacts[].id')
+          count=0
+          for id in $ids; do
+            gh api -X DELETE "repos/${{ github.repository }}/actions/artifacts/$id" > /dev/null && count=$((count+1))
+          done
+          echo "Deleted $count artifacts."
